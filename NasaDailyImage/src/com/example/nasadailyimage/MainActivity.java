@@ -37,9 +37,7 @@ public class MainActivity extends Activity implements IotdHandlerListener {
 	// create the UI handler thread to update from proc thread
 	protected Handler handler = new Handler();
 
-	/* (non-Javadoc)
-	 * @see android.app.Activity#onCreate(android.os.Bundle)
-	 */
+	
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -56,9 +54,7 @@ public class MainActivity extends Activity implements IotdHandlerListener {
 		refreshFeed();
 	}
 
-	/**
-	 * Refresh the feed by loading the rss URL, parse the result and display it.
-	 */
+	
 	private void refreshFeed() {
 		// get iotdHandler listener reference
 		final IotdHandlerListener iotdListener = this;
@@ -123,11 +119,7 @@ public class MainActivity extends Activity implements IotdHandlerListener {
 		imageDesc.setText(desc);
 	}
 
-	/**
-	 * Fetch the image from the given URL
-	 * @param url the image URL
-	 * @return the image as Bitmap
-	 */
+	
 	private Bitmap getImageDisplay(String url) {
 		try {
 
