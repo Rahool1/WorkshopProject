@@ -6,77 +6,189 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 
-import com.example.handler.IotdHandler;
-
+import android.app.Activity;
 import android.app.ProgressDialog;
+import android.app.WallpaperManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
-import android.support.v7.app.ActionBarActivity;
-import android.view.Menu;
-import android.view.MenuItem;
+import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.example.handler.IotdHandler;
+import com.example.handler.IotdHandlerListener;
 
 
-public class MainActivity extends ActionBarActivity {
+public class MainActivity extends Activity implements IotdHandlerListener {
+	protected final String NASA_FEED_URI = "http://www.nasa.gov/rss/image_of_the_day.rss";
 
-	//	protected LinearLayout mainLayout;
-	//	protected TextView imageTitle;
-	//	protected TextView imageDate;
-	//	protected ImageView imageDisplay;
-	//	protected TextView imageDesc;
-	//	protected ProgressDialog dlgLoad;
-	//	protected Bitmap nasaImg;
-
+	protected LinearLayout mainLayout;
+	protected TextView imageTitle;
+	protected TextView imageDate;
+	protected ImageView imageDisplay;
+	protected TextView imageDesc;
+	protected ProgressDialog dlgLoad;
 	protected Bitmap nasaImg;
 
+	// create the UI handler thread to update from proc thread
+	protected Handler handler = new Handler();
+
+	/* (non-Javadoc)
+	 * @see android.app.Activity#onCreate(android.os.Bundle)
+	 */
 	@Override
-	protected void onCreate(Bundle savedInstanceState) {
+	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 
-		IotdHandler handler = new IotdHandler();
-		handler.processFeed();
-		resetDisplay(handler.getTitle(),handler.getDate(), handler.getImage(),handler.getDescription());
+		// Connect interface elements to properties
+		mainLayout = (LinearLayout) findViewById(R.id.main_linear_layout);
+		imageTitle = (TextView) findViewById(R.id.imageTitle);
+		imageDate = (TextView) findViewById(R.id.imageDate);
+		imageDisplay = (ImageView) findViewById(R.id.imageDisplay);
+		imageDesc = (TextView) findViewById(R.id.imageDesc);
 
+		// refresh initially
+		refreshFeed();
 	}
 
-	private void resetDisplay(String title,String date,Bitmap bitmap,StringBuffer stringBuffer){
+	/**
+	 * Refresh the feed by loading the rss URL, parse the result and display it.
+	 */
+	private void refreshFeed() {
+		// get iotdHandler listener reference
+		final IotdHandlerListener iotdListener = this;
 
-		TextView titleView = (TextView) findViewById(R.id.imageTitle);
-		titleView.setText(title);
+		// get loading dialog messages
+		final String dlgLoadTitle = getString(R.string.dlg_load_title);
+		final String dlgLoadMsg = getString(R.string.dlg_load_msg);
+		// show loading on intiail refresh
+		dlgLoad = ProgressDialog.show(this, dlgLoadTitle, dlgLoadMsg);
 
-		TextView dataview = (TextView) findViewById(R.id.imageDate);
-		dataview.setText(date);
+		// initiate new thread to get the rss
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
 
-		ImageView imageView = (ImageView) findViewById(R.id.imageDisplay);
-		imageView.setImageBitmap(bitmap);
+					// create the rss parser
+					IotdHandler handler = new IotdHandler();
+					// set the listener
+					handler.setListener(iotdListener);
+					// start processing rss feed
+					handler.processFeed(new URL(NASA_FEED_URI));
 
-		TextView descriptionView = (TextView) findViewById(R.id.imageDesc);
-		descriptionView.setText(stringBuffer);
-
+				} catch (Exception ignored) {
+					// dismiss loading dialog on exception
+					dlgLoad.dismiss();
+				}
+			}
+		}).start(); // start the thread immidiately
 	}
 
-		
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.main, menu);
-		return true;
+	
+	private void resetDisplay(final String title, final String date,
+			final String imageUrl, final String desc) {
+
+		// initiate new thread to fetch the image from a URL
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				// save it as bitmap
+				nasaImg = getImageDisplay(imageUrl);
+				// update the image placeholder
+				handler.post(new Runnable() {
+					@Override
+					public void run() {
+						imageDisplay.setImageBitmap(nasaImg);
+						imageDisplay.setContentDescription(title);
+						// dismiss the loading dialog once the image is loaded
+						dlgLoad.dismiss();
+					}
+				});
+			}
+		}).start(); // start the thread immidiately
+
+		// update the title
+		imageTitle.setText(title);
+
+		// update the date
+		imageDate.setText(date);
+
+		// update the image description
+		imageDesc.setText(desc);
 	}
 
-	@Override
-	public boolean onOptionsItemSelected(MenuItem item) {
-		// Handle action bar item clicks here. The action bar will
-		// automatically handle clicks on the Home/Up button, so long
-		// as you specify a parent activity in AndroidManifest.xml.
-		int id = item.getItemId();
-		if (id == R.id.action_settings) {
-			return true;
+	/**
+	 * Fetch the image from the given URL
+	 * @param url the image URL
+	 * @return the image as Bitmap
+	 */
+	private Bitmap getImageDisplay(String url) {
+		try {
+
+			// crate a connection to fetch the URL
+			HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+			conn.setDoInput(true); // allows input
+			conn.connect(); // connect
+
+			// get the data stream
+			InputStream input = conn.getInputStream();
+			Bitmap bitmap = BitmapFactory.decodeStream(input); // decode as Bitmap
+			return bitmap;
 		}
-		return super.onOptionsItemSelected(item);
+
+		catch (MalformedURLException ignored) {
+			// dismiss loading dialog on exception
+			dlgLoad.dismiss();
+		}
+		catch (IOException ignored) {}
+		return null;
+	}
+
+	/**
+	 * Callback when button refresh is clicked
+	 * to refresh the image of the day feed
+	 * @param view the button as the source of click
+	 */
+	public void onRefresh(View view) {
+		refreshFeed(); // refresh the image of the day
+	}
+
+	/**
+	 * Callback when button set wallpaper is clicked
+	 * to set current image as wallpaper
+	 * @param view the button as the source of click
+	 */
+	public void onSetWallpaper(View view) {
+		final String nottyWallpaperSetOk = getString(R.string.notty_wallpaper_set_ok);
+		final String nottyWallpaperSetFailed = getString(R.string.notty_wallpaper_set_failed);
+		try {
+
+			WallpaperManager wm = WallpaperManager.getInstance(this);
+			wm.setBitmap(nasaImg);
+			Toast.makeText(MainActivity.this, nottyWallpaperSetOk, Toast.LENGTH_SHORT).show();
+
+		} catch (IOException ignored) {
+			Toast.makeText(MainActivity.this, nottyWallpaperSetFailed, Toast.LENGTH_SHORT).show();
+		}
+	}
+
+	
+	@Override
+	public void iotdParsed(final String url, final String title,
+			final String description, final String date) {
+
+		// update UI
+		handler.post(new Runnable() {
+			@Override
+			public void run() {
+				resetDisplay(title, date, url, description);
+			}
+		});
 	}
 }
